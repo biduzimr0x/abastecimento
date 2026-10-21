@@ -8,8 +8,8 @@
   // ===== Supabase =====
   // Preencha com os dados do seu projeto (veja SUPABASE.md). Deixando vazio, os dados ficam só neste navegador.
   window.SUPABASE_CONFIG = {
-    url: '',     // ex.: 'https://abcdefgh.supabase.co'
-    anonKey: '', // chave pública (anon / publishable)
+    url: 'https://jfrcjkxlmeqmhvxgyfzj.supabase.co',
+    anonKey: 'sb_publishable_pRB_Ct-LOVC5PDUZ05GBeA_cq6of5uG', // chave pública (publishable): pode ficar no código
   };
   if (SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey) document.documentElement.classList.add('cloud');
 
@@ -139,7 +139,6 @@
   .auth-card form { display: grid; gap: 10px; }
   .auth-card form[hidden] { display: none; }
   .auth-card input { text-align: center; font-size: 1rem; }
-  .auth-card #loginCode { letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
   .auth-card .error { margin: 10px 0 0; color: var(--bad); }
   .link-btn { border: 0; background: none; padding: 0; color: var(--accent); font-size: inherit; text-decoration: underline; cursor: pointer; }
   .link-btn:hover { border: 0; }
@@ -319,13 +318,11 @@
     <p id="authMsg">Carregando…</p>
     <form id="loginForm" hidden novalidate>
       <input type="email" id="loginEmail" placeholder="seu@email.com" autocomplete="email" aria-label="E-mail">
-      <button type="submit" class="primary" id="btnSendCode">Enviar código</button>
+      <button type="submit" class="primary" id="btnSendCode">Enviar link de acesso</button>
     </form>
-    <form id="codeForm" hidden novalidate>
-      <input type="text" id="loginCode" inputmode="numeric" autocomplete="one-time-code" placeholder="código" aria-label="Código recebido por e-mail">
-      <button type="submit" class="primary" id="btnVerify">Entrar</button>
+    <div id="sentBox" hidden>
       <button type="button" class="link-btn" id="btnOtherEmail">Usar outro e-mail</button>
-    </form>
+    </div>
     <p class="error" id="authError"></p>
   </div>
 </div>
@@ -543,7 +540,7 @@
   // Com SUPABASE_CONFIG preenchido, os registros ficam na tabela do Supabase, separados por usuário.
   const CFG = window.SUPABASE_CONFIG || {};
   const cloudWanted = !!(CFG.url && CFG.anonKey);
-  const db = cloudWanted && window.supabase ? window.supabase.createClient(CFG.url, CFG.anonKey) : null;
+  const db = cloudWanted && window.supabase ? window.supabase.createClient(CFG.url, CFG.anonKey, { auth: { flowType: 'implicit' } }) : null;
   const TABLE = 'abastecimentos';
   let user = null;
   let authChecked = false; // já recebeu a primeira resposta do login (com ou sem sessão)
@@ -1332,15 +1329,14 @@
     $('btnLogout').hidden = !db;
   }
 
-  // step: 'email' (pede o e-mail), 'code' (pede o código recebido) ou nada (só a mensagem)
+  // step: 'email' (pede o e-mail), 'sent' (link enviado) ou nada (só a mensagem)
   function showAuth(msg, step) {
     document.documentElement.classList.remove('logged');
     $('authMsg').textContent = msg;
     $('loginForm').hidden = step !== 'email';
-    $('codeForm').hidden = step !== 'code';
+    $('sentBox').hidden = step !== 'sent';
     $('authError').textContent = '';
     if (step === 'email') $('loginEmail').focus();
-    if (step === 'code') { $('loginCode').value = ''; $('loginCode').focus(); }
   }
   const LOGIN_MSG = 'Entre com seu e-mail para ver e registrar seus abastecimentos. Os dados ficam sincronizados entre o celular e o computador.';
 
@@ -1384,8 +1380,8 @@
   }
 
   if (db) {
-    // Login sem senha: o Supabase manda um e-mail com um código (e um link que também funciona)
-    let loginEmail = '';
+    // Login sem senha: o Supabase manda um e-mail com um link que abre a página já logada.
+    // Só entram e-mails cadastrados no Supabase (o cadastro de novos usuários está desligado).
     $('loginForm').addEventListener('submit', async (ev) => {
       ev.preventDefault();
       const email = $('loginEmail').value.trim();
@@ -1393,22 +1389,17 @@
       $('btnSendCode').disabled = true;
       const { error } = await db.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: location.origin + location.pathname },
+        options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: false },
       });
       $('btnSendCode').disabled = false;
-      if (error) { $('authError').textContent = `Não foi possível enviar o código: ${error.message}`; return; }
-      loginEmail = email;
-      showAuth(`Enviamos um código para ${email}. Digite-o abaixo (ou toque no link do e-mail).`, 'code');
-    });
-    $('codeForm').addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      const token = $('loginCode').value.replace(/\s/g, '');
-      if (!token) return;
-      $('btnVerify').disabled = true;
-      const { error } = await db.auth.verifyOtp({ email: loginEmail, token, type: 'email' });
-      $('btnVerify').disabled = false;
-      if (error) $('authError').textContent = 'Código inválido ou expirado. Confira o último e-mail recebido.';
-      // com sucesso, o onAuthStateChange abaixo abre o app
+      if (error) {
+        const msg = /signup|not allowed|not found/i.test(error.message) ? 'Este e-mail não tem acesso ao sistema.'
+          : /rate limit|seconds/i.test(error.message) ? 'Muitos e-mails enviados em pouco tempo. Aguarde um pouco e tente de novo (ou use o último link recebido).'
+          : `Não foi possível enviar o link: ${error.message}`;
+        $('authError').textContent = msg;
+        return;
+      }
+      showAuth(`Enviamos um link de acesso para ${email}. Abra o e-mail neste aparelho e toque no link (confira também o spam).`, 'sent');
     });
     $('btnOtherEmail').addEventListener('click', () => showAuth(LOGIN_MSG, 'email'));
     $('btnLogout').addEventListener('click', () => db.auth.signOut());
