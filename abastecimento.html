@@ -1,0 +1,1436 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Controle de Abastecimento</title>
+<script>
+  // ===== Supabase =====
+  // Preencha com os dados do seu projeto (veja SUPABASE.md). Deixando vazio, os dados ficam só neste navegador.
+  window.SUPABASE_CONFIG = {
+    url: '',     // ex.: 'https://abcdefgh.supabase.co'
+    anonKey: '', // chave pública (anon / publishable)
+  };
+  if (SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey) document.documentElement.classList.add('cloud');
+
+  // Aplica o tema salvo antes de desenhar a página, para não piscar no tema errado
+  try {
+    const t = localStorage.getItem('tema');
+    if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+  } catch {}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0/dist/umd/supabase.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f3f3f1;
+    --surface: #fcfcfb;
+    --border: #e2e1dc;
+    --grid: #ecebe7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #7a7974;
+    --accent: #2a78d6;
+    --accent-ink: #ffffff;
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --good: #0f7a3d;
+    --bad: #c23b3a;
+    --warn-bg: #fff4d6;
+    --warn-border: #e8c15a;
+    --warn-ink: #5c4200;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #111110;
+      --surface: #1a1a19;
+      --border: #2e2e2c;
+      --grid: #2a2a28;
+      --text-primary: #f0efec;
+      --text-secondary: #c3c2b7;
+      --text-muted: #8f8e86;
+      --accent: #3987e5;
+      --accent-ink: #ffffff;
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --good: #4cc27a;
+      --bad: #ee7a79;
+      --warn-bg: #3a2f10;
+      --warn-border: #7a6220;
+      --warn-ink: #f5dc96;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #111110;
+    --surface: #1a1a19;
+    --border: #2e2e2c;
+    --grid: #2a2a28;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8f8e86;
+    --accent: #3987e5;
+    --accent-ink: #ffffff;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --good: #4cc27a;
+    --bad: #ee7a79;
+    --warn-bg: #3a2f10;
+    --warn-border: #7a6220;
+    --warn-ink: #f5dc96;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text-primary);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+  h1 { font-size: 1.5rem; margin: 0; }
+  h2 { font-size: 1.05rem; margin: 0 0 12px; }
+  .muted { color: var(--text-muted); }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+
+  button {
+    font: inherit;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-primary);
+    padding: 8px 14px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--text-muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.small { padding: 4px 10px; font-size: 0.85rem; }
+  button.danger { color: var(--bad); }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+  /* Switch de tema */
+  .theme-switch { display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; padding: 4px 6px; font-size: 0.9rem; color: var(--text-secondary); }
+  .theme-switch:hover { border: 0; }
+  .theme-switch .track { position: relative; width: 44px; height: 24px; border-radius: 999px; background: var(--border); transition: background 0.2s; flex: none; }
+  .theme-switch .knob { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / 0.3); transition: transform 0.2s; display: grid; place-items: center; font-size: 11px; line-height: 1; }
+  .theme-switch[aria-checked="true"] .track { background: var(--accent); }
+  .theme-switch[aria-checked="true"] .knob { transform: translateX(20px); }
+  .theme-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+
+  /* Login (modo nuvem): até entrar, só a tela de login aparece */
+  .auth-screen { display: none; min-height: 100vh; align-items: center; justify-content: center; padding: 16px; }
+  html.cloud:not(.logged) .auth-screen { display: flex; }
+  html.cloud:not(.logged) .wrap { display: none; }
+  .auth-card { width: 100%; max-width: 400px; text-align: center; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px 22px; }
+  .auth-card h1 { margin-bottom: 10px; }
+  .auth-card p { color: var(--text-secondary); margin: 0 0 18px; }
+  .auth-card .primary { width: 100%; padding: 11px 14px; }
+  .auth-card form { display: grid; gap: 10px; }
+  .auth-card form[hidden] { display: none; }
+  .auth-card input { text-align: center; font-size: 1rem; }
+  .auth-card #loginCode { letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
+  .auth-card .error { margin: 10px 0 0; color: var(--bad); }
+  .link-btn { border: 0; background: none; padding: 0; color: var(--accent); font-size: inherit; text-decoration: underline; cursor: pointer; }
+  .link-btn:hover { border: 0; }
+
+  /* Aviso de backup */
+  .warn {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    color: var(--warn-ink);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+  }
+  .warn.show { display: flex; }
+
+  /* Formulário */
+  form .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  form .hint { margin: 10px 0 0; font-size: 0.8rem; color: var(--text-muted); }
+  /* Campo calculado automaticamente */
+  input.auto { border-style: dashed; color: var(--text-secondary); }
+  form select { width: 100%; min-width: 0; padding: 9px 10px; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--text-secondary); }
+  input {
+    font: inherit;
+    padding: 9px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-primary);
+    width: 100%;
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .calc { display: flex; flex-wrap: wrap; gap: 20px; margin: 14px 0; font-size: 0.9rem; color: var(--text-secondary); }
+  .calc strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .form-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .error { color: var(--bad); font-size: 0.85rem; }
+
+  /* KPIs */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .kpi .label { font-size: 0.8rem; color: var(--text-secondary); }
+  .kpi .value { font-size: 1.4rem; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .kpi .sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+  .up { color: var(--bad); }
+  .down { color: var(--good); }
+
+  /* Gráficos */
+  .charts-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; padding: 7px 16px; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .chart-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .chart-box h3 { margin: 0 0 2px; font-size: 0.95rem; }
+  .chart-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+  .chart-head .seg button { padding: 5px 12px; font-size: 0.85rem; }
+  .chart-box p { margin: 0 0 10px; font-size: 0.8rem; color: var(--text-muted); }
+  .canvas-wrap { position: relative; height: 360px; }
+  /* Comparador gasolina × álcool */
+  .cmp-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
+  .verdict { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; background: var(--bg); }
+  .verdict .big { font-size: 1.25rem; font-weight: 700; }
+  .verdict .why { color: var(--text-secondary); font-size: 0.9rem; margin-top: 4px; }
+  .cmp-bars { display: grid; gap: 14px; margin-bottom: 16px; }
+  .cmp-row .top { display: flex; justify-content: space-between; gap: 10px; font-size: 0.9rem; margin-bottom: 5px; }
+  .cmp-row .top .val { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .cmp-row .track { height: 26px; background: var(--grid); border-radius: 4px; overflow: hidden; }
+  .cmp-row .bar { height: 100%; border-radius: 0 4px 4px 0; transition: width 0.3s; }
+  .cmp-row .sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+  .cmp-table { width: 100%; font-size: 0.9rem; }
+  .cmp-table th, .cmp-table td { padding: 7px 10px; }
+  .cmp-table th:nth-child(2), .cmp-table td:nth-child(2) { text-align: right; }
+  @media (max-width: 760px) { .cmp-grid { grid-template-columns: 1fr 1fr; } }
+
+  .fuel { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.8rem; border: 1px solid var(--border); color: var(--text-secondary); }
+  .fuel.alcool { background: var(--grid); color: var(--text-primary); }
+  /* Telas: registro (padrão) e gráficos */
+  .wrap:not(.show-charts) .charts-only,
+  .wrap.show-charts .main-only { display: none; }
+
+  .empty { text-align: center; padding: 40px 0; color: var(--text-muted); }
+
+  /* Tabela */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { padding: 9px 10px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  th { color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; }
+  th:first-child, td:first-child,
+  th:nth-child(2), td:nth-child(2) { text-align: left; }
+  td.actions { display: flex; gap: 6px; justify-content: flex-end; }
+  .hist-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+  .month-filter { display: flex; gap: 6px; align-items: center; }
+  .month-filter button { padding: 6px 12px; font-size: 1.05rem; line-height: 1; }
+  .month-filter button:disabled { opacity: 0.4; cursor: default; }
+  select {
+    font: inherit;
+    padding: 7px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-primary);
+    min-width: 150px;
+  }
+
+  dialog {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--text-primary);
+    padding: 20px;
+    max-width: 420px;
+    width: calc(100% - 32px);
+  }
+  dialog::backdrop { background: rgb(0 0 0 / 0.45); }
+  dialog .toolbar { justify-content: flex-end; margin-top: 16px; }
+
+  @media (max-width: 760px) {
+    form .grid { grid-template-columns: 1fr 1fr; }
+    .charts { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  /* Celular */
+  @media (max-width: 600px) {
+    .card { padding: 16px 14px; }
+    /* Comparador: campos alinhados mesmo quando o rótulo quebra em duas linhas */
+    .cmp-grid label { justify-content: space-between; }
+    .cmp-grid label:last-child { grid-column: 1 / -1; }
+
+    /* Filtros do histórico ocupam a largura toda */
+    .hist-head > div:first-child { width: 100%; }
+    .month-filter { flex-wrap: wrap; width: 100%; }
+    .month-filter #fuelFilter { flex: 1 1 100%; }
+    .month-filter #monthFilter { flex: 1; min-width: 0; }
+
+    /* Histórico vira uma lista de cartões */
+    .hist-table thead, .hist-table[hidden] { display: none; }
+    .hist-table, .hist-table tbody { display: block; }
+    .hist-table tr {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg);
+    }
+    .hist-table td { display: block; padding: 0; border: 0; text-align: left !important; white-space: normal; }
+    .hist-table td[data-label]::before {
+      content: attr(data-label);
+      display: block;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+    .hist-table td.head-date { grid-column: 1 / 3; font-weight: 650; font-size: 1rem; }
+    .hist-table td.head-fuel { text-align: right !important; }
+    .hist-table td.actions { display: flex; grid-column: 1 / -1; padding-top: 4px; }
+    .hist-table td.actions button { flex: 1; padding: 8px; }
+
+    /* Tabela de distâncias do comparador mais compacta */
+    .cmp-table { font-size: 0.8rem; }
+    .cmp-table th, .cmp-table td { padding: 7px 4px; }
+    .cmp-table th { white-space: normal; }
+    .cmp-table .favor { display: block; white-space: normal; font-size: 0.72rem; color: var(--text-muted); }
+  }
+</style>
+</head>
+<body>
+<div class="auth-screen" id="authScreen">
+  <div class="auth-card">
+    <h1>⛽ Controle de Abastecimento</h1>
+    <p id="authMsg">Carregando…</p>
+    <form id="loginForm" hidden novalidate>
+      <input type="email" id="loginEmail" placeholder="seu@email.com" autocomplete="email" aria-label="E-mail">
+      <button type="submit" class="primary" id="btnSendCode">Enviar código</button>
+    </form>
+    <form id="codeForm" hidden novalidate>
+      <input type="text" id="loginCode" inputmode="numeric" autocomplete="one-time-code" placeholder="código" aria-label="Código recebido por e-mail">
+      <button type="submit" class="primary" id="btnVerify">Entrar</button>
+      <button type="button" class="link-btn" id="btnOtherEmail">Usar outro e-mail</button>
+    </form>
+    <p class="error" id="authError"></p>
+  </div>
+</div>
+
+<div class="wrap" id="wrap">
+  <header>
+    <div>
+      <h1>⛽ Controle de Abastecimento</h1>
+      <div class="muted"><span id="storageNote">Seus dados ficam salvos neste navegador.</span>
+        <button type="button" class="link-btn" id="btnLogout" hidden>Sair</button></div>
+    </div>
+    <div class="toolbar">
+      <button type="button" class="theme-switch" id="themeSwitch" role="switch" aria-checked="false" aria-label="Modo escuro">
+        <span class="track"><span class="knob" id="themeIcon">☀️</span></span>
+        <span>Modo escuro</span>
+      </button>
+      <button type="button" class="primary" id="btnCharts">📊 Ver gráficos</button>
+      <button type="button" id="btnExport">Exportar backup</button>
+      <button type="button" id="btnImport">Importar backup</button>
+      <input type="file" id="fileImport" accept="application/json,.json" hidden>
+      <button type="button" class="danger" id="btnClearAll">Limpar todos os dados</button>
+    </div>
+  </header>
+
+  <div class="warn" id="backupWarn" role="status">
+    <span id="backupWarnText"></span>
+    <button type="button" class="primary small" id="btnBackupNow">Fazer backup agora</button>
+  </div>
+
+  <section class="card main-only">
+    <h2 id="formTitle">Novo abastecimento</h2>
+    <form id="form" novalidate>
+      <div class="grid">
+        <label>Combustível
+          <select id="fComb">
+            <option value="gasolina">Gasolina</option>
+            <option value="alcool">Álcool</option>
+          </select>
+        </label>
+        <label>Data
+          <input type="date" id="fData" required>
+        </label>
+        <label>Km rodados
+          <input type="text" inputmode="decimal" id="fKm" placeholder="ex.: 480" required>
+        </label>
+        <label>Valor total (R$)
+          <input type="text" inputmode="decimal" id="fValor" placeholder="ex.: 250,00" required>
+        </label>
+        <label>Preço do litro (R$)
+          <input type="text" inputmode="decimal" id="fPreco" placeholder="ex.: 6,19">
+        </label>
+        <label>Litros
+          <input type="text" inputmode="decimal" id="fLitros" placeholder="ex.: 40" required>
+        </label>
+      </div>
+      <p class="hint">Preencha dois entre <strong>valor total</strong>, <strong>preço do litro</strong> e <strong>litros</strong>. O terceiro é calculado sozinho.</p>
+      <div class="calc">
+        <span>Consumo: <strong id="cConsumo">—</strong></span>
+        <span>Custo por km: <strong id="cCustoKm">—</strong></span>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="primary" id="btnSubmit">Adicionar</button>
+        <button type="button" id="btnCancelEdit" hidden>Cancelar edição</button>
+        <span class="error" id="formError"></span>
+      </div>
+    </form>
+  </section>
+
+  <section class="kpis main-only" id="kpis"></section>
+
+  <section class="card charts-only">
+    <div class="charts-head">
+      <div style="display:flex; align-items:center; gap:12px">
+        <button type="button" id="btnBack">← Voltar</button>
+        <h2 style="margin:0">Gráficos</h2>
+      </div>
+      <div class="seg" role="group" aria-label="Agrupar por">
+        <button type="button" data-group="week" aria-pressed="true">Semana</button>
+        <button type="button" data-group="month" aria-pressed="false">Mês</button>
+      </div>
+    </div>
+    <div id="chartsEmpty" class="empty" hidden>Adicione abastecimentos para ver os gráficos.</div>
+    <div class="charts" id="charts">
+      <div class="chart-box">
+        <div class="chart-head">
+          <h3>Gasto (R$)</h3>
+          <div class="seg" role="group" aria-label="Combustível do gráfico">
+            <button type="button" data-fuel="both" aria-pressed="true">Ambos</button>
+            <button type="button" data-fuel="gasolina" aria-pressed="false">Gasolina</button>
+            <button type="button" data-fuel="alcool" aria-pressed="false">Álcool</button>
+          </div>
+        </div>
+        <p id="chGastoDesc"></p>
+        <div class="canvas-wrap"><canvas id="chGasto" aria-label="Gráfico de gasto por período" role="img"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card main-only">
+    <h2>Gasolina × Álcool: qual compensa?</h2>
+    <div class="cmp-grid">
+      <label>Gasolina (R$/L)
+        <input type="text" inputmode="decimal" id="cmpPrecoGas" placeholder="ex.: 6,19">
+      </label>
+      <label>Álcool (R$/L)
+        <input type="text" inputmode="decimal" id="cmpPrecoAlc" placeholder="ex.: 4,29">
+      </label>
+      <label>Consumo com gasolina (km/L)
+        <input type="text" inputmode="decimal" id="cmpKmlGas" placeholder="ex.: 14">
+      </label>
+      <label>Álcool gasta a mais (%)
+        <input type="text" inputmode="decimal" id="cmpExtra" placeholder="ex.: 30">
+      </label>
+      <label>Distância (km)
+        <input type="text" inputmode="decimal" id="cmpKm" placeholder="ex.: 420">
+      </label>
+    </div>
+    <div id="cmpResult"></div>
+  </section>
+
+  <section class="card main-only">
+    <div class="hist-head">
+      <div>
+        <h2 style="margin:0">Histórico</h2>
+        <div class="muted" id="histSummary" style="font-size:0.85rem"></div>
+      </div>
+      <div class="month-filter">
+        <select id="fuelFilter" aria-label="Filtrar por combustível">
+          <option value="all">Todos os combustíveis</option>
+          <option value="gasolina">Só gasolina</option>
+          <option value="alcool">Só álcool</option>
+        </select>
+        <button type="button" id="btnMonthPrev" aria-label="Mês anterior">‹</button>
+        <select id="monthFilter" aria-label="Filtrar por mês"></select>
+        <button type="button" id="btnMonthNext" aria-label="Próximo mês">›</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="hist-table" id="histTable">
+        <thead>
+          <tr>
+            <th>Data</th><th>Combustível</th><th>Valor</th><th>Litros</th><th>Km</th>
+            <th>R$/L</th><th>km/L</th><th>R$/km</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div id="tableEmpty" class="empty" hidden>Nenhum abastecimento registrado ainda.</div>
+  </section>
+</div>
+
+<dialog id="importDialog">
+  <h2>Importar backup</h2>
+  <p id="importInfo"></p>
+  <p class="muted" style="font-size:0.9rem">
+    <strong>Mesclar</strong> junta com os dados atuais (sem duplicar).<br>
+    <strong>Substituir</strong> apaga os dados atuais e usa só os do arquivo.
+  </p>
+  <div class="toolbar">
+    <button type="button" data-act="cancel">Cancelar</button>
+    <button type="button" data-act="replace" class="danger">Substituir</button>
+    <button type="button" data-act="merge" class="primary">Mesclar</button>
+  </div>
+</dialog>
+
+<script>
+(() => {
+  const STORE_KEY = 'abastecimentos_v1';
+  const BACKUP_KEY = 'ultimo_backup';
+  const CHANGED_KEY = 'alterado_em';
+  const BACKUP_DAYS = 7;
+
+  const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+  const num = (d) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const n0 = num(0), n1 = num(1), n2 = num(2);
+  const MESES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+
+  // ---------- Armazenamento ----------
+  function storageGet(key) {
+    try { return localStorage.getItem(key); } catch { return null; }
+  }
+  function storageSet(key, value) {
+    try { localStorage.setItem(key, value); return true; } catch { return false; }
+  }
+
+  // Dados de exemplo (os mesmos de dados-teste.json), carregados na primeira vez que a página abre
+  const EXEMPLO = [
+    { id: 'exemplo-1', data: '2026-08-04', combustivel: 'gasolina', valor: 194.88, litros: 32, km: 451 },
+    { id: 'exemplo-2', data: '2026-08-15', combustivel: 'alcool', valor: 173.75, litros: 40.5, km: 441 },
+    { id: 'exemplo-3', data: '2026-08-27', combustivel: 'gasolina', valor: 174.66, litros: 28.4, km: 386 },
+    { id: 'exemplo-4', data: '2026-09-06', combustivel: 'alcool', valor: 167.7, litros: 38.2, km: 405 },
+    { id: 'exemplo-5', data: '2026-09-14', combustivel: 'alcool', valor: 178.35, litros: 41, km: 455 },
+    { id: 'exemplo-6', data: '2026-09-23', combustivel: 'gasolina', valor: 185.7, litros: 30, km: 420 },
+    { id: 'exemplo-7', data: '2026-10-01', combustivel: 'gasolina', valor: 222.14, litros: 35.6, km: 491 },
+    { id: 'exemplo-8', data: '2026-10-07', combustivel: 'alcool', valor: 172.44, litros: 36, km: 374 },
+    { id: 'exemplo-9', data: '2026-10-12', combustivel: 'gasolina', valor: 182.25, litros: 29.3, km: 419 },
+    { id: 'exemplo-10', data: '2026-10-18', combustivel: 'alcool', valor: 188.58, litros: 42, km: 454 },
+  ];
+  const exemplo = () => EXEMPLO.map(e => ({ ...e }));
+
+  function load() {
+    try {
+      const data = JSON.parse(storageGet(STORE_KEY) || '[]');
+      return Array.isArray(data) ? data.filter(isValidEntry) : [];
+    } catch { return []; }
+  }
+  function save() {
+    const ok = storageSet(STORE_KEY, JSON.stringify(entries));
+    storageSet(CHANGED_KEY, new Date().toISOString());
+    if (!ok) alert('Não foi possível salvar no navegador. Faça um backup (Exportar) para não perder os dados.');
+  }
+
+  // ---------- Nuvem (Supabase) ----------
+  // Com SUPABASE_CONFIG preenchido, os registros ficam na tabela do Supabase, separados por usuário.
+  const CFG = window.SUPABASE_CONFIG || {};
+  const cloudWanted = !!(CFG.url && CFG.anonKey);
+  const db = cloudWanted && window.supabase ? window.supabase.createClient(CFG.url, CFG.anonKey) : null;
+  const TABLE = 'abastecimentos';
+  let user = null;
+  let authChecked = false; // já recebeu a primeira resposta do login (com ou sem sessão)
+
+  const toRow = (e) => ({ user_id: user.id, id: e.id, data: e.data, combustivel: fuelOf(e), valor: e.valor, litros: e.litros, km: e.km });
+
+  async function cloudFetch() {
+    const { data, error } = await db.from(TABLE).select('id, data, combustivel, valor, litros, km');
+    if (error) throw error;
+    return data.map(r => ({ ...r, valor: Number(r.valor), litros: Number(r.litros), km: Number(r.km) })).filter(isValidEntry);
+  }
+  async function cloudUpsert(list) {
+    if (!list.length) return;
+    const { error } = await db.from(TABLE).upsert(list.map(toRow), { onConflict: 'user_id,id' });
+    if (error) throw error;
+  }
+  async function cloudDelete(ids) {
+    const { error } = await db.from(TABLE).delete().in('id', ids);
+    if (error) throw error;
+  }
+  async function cloudDeleteAll() {
+    const { error } = await db.from(TABLE).delete().eq('user_id', user.id);
+    if (error) throw error;
+  }
+
+  // Grava uma mudança já aplicada em `entries`: no navegador (modo local) ou no Supabase.
+  // As gravações na nuvem vão em fila, na ordem em que foram feitas.
+  let pending = 0;
+  let queue = Promise.resolve();
+  function persist(task) {
+    if (!db) { save(); return Promise.resolve(); }
+    pending++;
+    renderStorageNote();
+    queue = queue.then(task).catch(async (err) => {
+      alert(`Não foi possível salvar na nuvem (${err.message || err}). Os dados foram recarregados do servidor.`);
+      await reloadCloud();
+    }).finally(() => { pending--; renderStorageNote(); });
+    return queue;
+  }
+
+  async function reloadCloud() {
+    try {
+      entries = await cloudFetch();
+      render();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  function isValidEntry(e) {
+    return e && typeof e.id === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.data)
+      && [e.valor, e.litros, e.km].every(v => typeof v === 'number' && isFinite(v) && v > 0);
+  }
+
+  // Registros antigos (sem o campo) são de gasolina
+  function fuelOf(e) { return e.combustivel === 'alcool' ? 'alcool' : 'gasolina'; }
+  const FUEL_LABEL = { gasolina: 'Gasolina', alcool: 'Álcool' };
+
+  let entries = [];
+  let editingId = null;
+  let groupMode = storageGet('agrupamento') === 'month' ? 'month' : 'week';
+  let chartFuel = ['gasolina', 'alcool'].includes(storageGet('grafico_combustivel')) ? storageGet('grafico_combustivel') : 'both';
+
+  // ---------- Utilidades ----------
+  function parseNum(str) {
+    if (typeof str !== 'string') return NaN;
+    let s = str.trim().replace(/\s|R\$/g, '');
+    if (!s) return NaN;
+    // "1.234,56" -> 1234.56 ; "42,5" -> 42.5 ; "42.5" -> 42.5
+    if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+    return Number(s);
+  }
+  function fmtInput(n) { return String(n).replace('.', ','); }
+
+  function parseDate(iso) {
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+  function toISO(dt) {
+    const p = (n) => String(n).padStart(2, '0');
+    return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+  }
+  function fmtDate(iso) {
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+  }
+  function mondayOf(dt) {
+    const d = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    const day = (d.getDay() + 6) % 7; // segunda = 0
+    d.setDate(d.getDate() - day);
+    return d;
+  }
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  // ---------- Agrupamento ----------
+  // Devolve períodos em ordem cronológica, incluindo os vazios entre o primeiro e o último.
+  function groupBy(list, mode) {
+    if (!list.length) return [];
+    const dates = list.map(e => parseDate(e.data)).sort((a, b) => a - b);
+    const buckets = new Map();
+
+    let cur = mode === 'week' ? mondayOf(dates[0]) : new Date(dates[0].getFullYear(), dates[0].getMonth(), 1);
+    const last = dates[dates.length - 1];
+    while (cur <= last) {
+      const key = toISO(cur);
+      let label;
+      if (mode === 'week') {
+        const end = new Date(cur); end.setDate(end.getDate() + 6);
+        const dm = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+        label = `${dm(cur)}–${dm(end)}`;
+      } else {
+        label = `${MESES[cur.getMonth()]}/${cur.getFullYear()}`;
+      }
+      buckets.set(key, { label, gasto: 0, litros: 0, km: 0, qtd: 0, gasolina: 0, alcool: 0, n: { gasolina: 0, alcool: 0 } });
+      cur = mode === 'week'
+        ? new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 7)
+        : new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+    }
+
+    for (const e of list) {
+      const dt = parseDate(e.data);
+      const start = mode === 'week' ? mondayOf(dt) : new Date(dt.getFullYear(), dt.getMonth(), 1);
+      const b = buckets.get(toISO(start));
+      if (!b) continue;
+      b.gasto += e.valor; b.litros += e.litros; b.km += e.km; b.qtd++;
+      b[fuelOf(e)] += e.valor;
+      b.n[fuelOf(e)]++;
+    }
+    return [...buckets.values()];
+  }
+
+  // ---------- Formulário ----------
+  const $ = (id) => document.getElementById(id);
+  const form = $('form'), fData = $('fData'), fValor = $('fValor'), fLitros = $('fLitros'), fKm = $('fKm'), fComb = $('fComb'), fPreco = $('fPreco');
+
+  // Valor total, preço do litro e litros: os dois últimos digitados valem e o terceiro é calculado.
+  const trio = { valor: fValor, preco: fPreco, litros: fLitros };
+  let edited = []; // campos digitados pelo usuário, do mais recente ao mais antigo (no máximo 2)
+  const fmtFixed = (n, min, max) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: min, maximumFractionDigits: max, useGrouping: false }).format(n);
+
+  function fillAuto() {
+    Object.values(trio).forEach(el => el.classList.remove('auto'));
+    if (edited.length < 2) return;
+    const auto = Object.keys(trio).find(k => !edited.includes(k));
+    const v = parseNum(fValor.value), p = parseNum(fPreco.value), l = parseNum(fLitros.value);
+    let result = NaN;
+    if (auto === 'valor' && p > 0 && l > 0) result = fmtFixed(p * l, 2, 2);
+    if (auto === 'preco' && v > 0 && l > 0) result = fmtFixed(v / l, 2, 3);
+    if (auto === 'litros' && v > 0 && p > 0) result = fmtFixed(v / p, 2, 2);
+    trio[auto].value = typeof result === 'string' ? result : '';
+    trio[auto].classList.add('auto');
+  }
+
+  Object.entries(trio).forEach(([name, el]) => el.addEventListener('input', () => {
+    edited = [name, ...edited.filter(n => n !== name)].slice(0, 2);
+    fillAuto();
+    updateCalc();
+  }));
+
+  function resetForm() {
+    editingId = null;
+    form.reset();
+    fData.value = toISO(new Date());
+    // Mantém o último combustível usado, já que costuma se repetir
+    fComb.value = storageGet('ultimo_combustivel') === 'alcool' ? 'alcool' : 'gasolina';
+    $('formTitle').textContent = 'Novo abastecimento';
+    $('btnSubmit').textContent = 'Adicionar';
+    $('btnCancelEdit').hidden = true;
+    $('formError').textContent = '';
+    edited = [];
+    fillAuto();
+    updateCalc();
+  }
+
+  function updateCalc() {
+    const v = parseNum(fValor.value), l = parseNum(fLitros.value), k = parseNum(fKm.value);
+    $('cConsumo').textContent = k > 0 && l > 0 ? `${n2.format(k / l)} km/L` : '—';
+    $('cCustoKm').textContent = v > 0 && k > 0 ? brl.format(v / k) : '—';
+  }
+  fKm.addEventListener('input', updateCalc);
+
+  form.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const entry = {
+      id: editingId || uid(),
+      data: fData.value,
+      valor: parseNum(fValor.value),
+      litros: parseNum(fLitros.value),
+      km: parseNum(fKm.value),
+      combustivel: fComb.value === 'alcool' ? 'alcool' : 'gasolina',
+    };
+    if (!entry.data) return showError('Informe a data.');
+    if (!(entry.valor > 0) || !(entry.litros > 0)) {
+      return showError('Preencha dois entre valor total, preço do litro e litros.');
+    }
+    if (!(entry.km > 0)) return showError('Informe os km rodados.');
+    histMonth = entry.data.slice(0, 7); // mostra o mês do registro recém-salvo
+    storageSet('ultimo_combustivel', entry.combustivel);
+    addOrUpdate(entry);
+    resetForm();
+  });
+  function showError(msg) { $('formError').textContent = msg; }
+
+  $('btnCancelEdit').addEventListener('click', resetForm);
+
+  function addOrUpdate(entry) {
+    const i = entries.findIndex(e => e.id === entry.id);
+    if (i >= 0) entries[i] = entry; else entries.push(entry);
+    persist(() => cloudUpsert([entry]));
+    render();
+  }
+  function remove(id) {
+    entries = entries.filter(e => e.id !== id);
+    if (editingId === id) resetForm();
+    persist(() => cloudDelete([id]));
+    render();
+  }
+  function startEdit(id) {
+    const e = entries.find(x => x.id === id);
+    if (!e) return;
+    editingId = id;
+    fData.value = e.data;
+    fComb.value = fuelOf(e);
+    fValor.value = fmtInput(e.valor);
+    fLitros.value = fmtInput(e.litros);
+    fKm.value = fmtInput(e.km);
+    edited = ['litros', 'valor']; // o preço do litro é recalculado a partir do que foi salvo
+    fillAuto();
+    $('formTitle').textContent = 'Editar abastecimento';
+    $('btnSubmit').textContent = 'Salvar alterações';
+    $('btnCancelEdit').hidden = false;
+    $('formError').textContent = '';
+    updateCalc();
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ---------- KPIs ----------
+  function renderKPIs() {
+    const tot = entries.reduce((a, e) => ({ v: a.v + e.valor, l: a.l + e.litros, k: a.k + e.km }), { v: 0, l: 0, k: 0 });
+    const now = new Date();
+    const ymOf = (d) => d.getFullYear() * 12 + d.getMonth();
+    const thisYM = ymOf(now);
+    const sumMonth = (ym) => entries.filter(e => ymOf(parseDate(e.data)) === ym).reduce((a, e) => a + e.valor, 0);
+    const mesAtual = sumMonth(thisYM), mesAnterior = sumMonth(thisYM - 1);
+
+    let comp = 'sem dados do mês anterior';
+    if (mesAnterior > 0) {
+      const pct = (mesAtual - mesAnterior) / mesAnterior * 100;
+      const cls = pct > 0 ? 'up' : pct < 0 ? 'down' : '';
+      const arrow = pct > 0 ? '▲' : pct < 0 ? '▼' : '•';
+      comp = `<span class="${cls}">${arrow} ${n1.format(Math.abs(pct))}%</span> vs. ${brl.format(mesAnterior)} no mês anterior`;
+    }
+
+    const kpi = (label, value, sub = '') =>
+      `<div class="kpi"><div class="label">${label}</div><div class="value">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
+
+    $('kpis').innerHTML = [
+      kpi(`Gasto em ${MESES[now.getMonth()]}/${now.getFullYear()}`, brl.format(mesAtual), comp),
+      kpi('Total gasto', brl.format(tot.v), `${entries.length} abastecimento${entries.length === 1 ? '' : 's'}`),
+      kpi('Total de litros', `${n1.format(tot.l)} L`),
+      kpi('Total de km', `${n0.format(tot.k)} km`),
+      kpi('Consumo médio', tot.l ? `${n2.format(tot.k / tot.l)} km/L` : '—'),
+      kpi('Custo por km', tot.k ? brl.format(tot.v / tot.k) : '—', tot.l ? `litro médio ${brl.format(tot.v / tot.l)}` : ''),
+    ].join('');
+  }
+
+  // ---------- Gráficos ----------
+  const charts = {};
+  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  const brl0 = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+
+  // Escreve o total em cima de cada coluna. Se não couber com centavos, tenta sem;
+  // se ainda não couber (muitas semanas), escreve na vertical.
+  const barTotals = {
+    id: 'barTotals',
+    afterDatasetsDraw(chart, _args, opts) {
+      const { ctx } = chart;
+      // Cada coluna (de cada série) recebe o próprio valor em cima
+      const bars = [];
+      chart.data.datasets.forEach((ds, d) => {
+        chart.getDatasetMeta(d).data.forEach((bar, i) => bars.push({ bar, v: ds.data[i] }));
+      });
+      const values = bars.map(b => b.v);
+      if (!bars.length) return;
+      // Espaço disponível para o texto: a largura da coluna mais a folga até a vizinha
+      const step = Math.min(...bars.map(b => b.bar.width)) * (chart.data.datasets.length > 1 ? 1.15 : 1.6);
+      // Colunas finas demais (muitas semanas na tela do celular): nem na vertical cabe; fica só o tooltip
+      if (Math.min(...bars.map(b => b.bar.width)) < 12) return;
+
+      ctx.save();
+      ctx.font = '600 11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+      ctx.fillStyle = opts.color;
+      const widest = (fmt) => Math.max(...values.map(v => v > 0 ? ctx.measureText(fmt(v)).width : 0));
+      let fmt = (v) => brl.format(v);
+      if (widest(fmt) > step - 4) fmt = (v) => brl0.format(v);
+      const vertical = widest(fmt) > step - 4;
+
+      bars.forEach(({ bar, v }) => {
+        if (!(v > 0)) return;
+        if (vertical) {
+          ctx.save();
+          ctx.translate(bar.x, bar.y - 5);
+          ctx.rotate(-Math.PI / 2);
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(fmt(v), 0, 0);
+          ctx.restore();
+        } else {
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(fmt(v), bar.x, bar.y - 4);
+        }
+      });
+      ctx.restore();
+    },
+  };
+
+  const FUEL_COLOR = { gasolina: '--series-1', alcool: '--series-2' };
+
+  // fuelMode: 'both' (colunas lado a lado), 'gasolina' ou 'alcool'
+  function makeChart(id, groups, fuelMode) {
+    if (charts[id]) charts[id].destroy();
+    const grid = cssVar('--grid');
+    const muted = cssVar('--text-muted');
+    const fmt = (v) => brl.format(v);
+    const fuels = fuelMode === 'both' ? ['gasolina', 'alcool'] : [fuelMode];
+
+    charts[id] = new Chart(document.getElementById(id), {
+      type: 'bar',
+      plugins: [barTotals],
+      data: {
+        labels: groups.map(g => g.label),
+        datasets: fuels.map((f) => ({
+          label: FUEL_LABEL[f],
+          data: groups.map(g => g[f]),
+          backgroundColor: cssVar(FUEL_COLOR[f]),
+          borderWidth: 0,
+          borderRadius: { topLeft: 4, topRight: 4 },
+          borderSkipped: 'bottom',
+          maxBarThickness: 48,
+        })),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 250 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            display: fuels.length > 1,
+            position: 'top',
+            align: 'end',
+            labels: { color: cssVar('--text-secondary'), boxWidth: 12, boxHeight: 12, font: { size: 12 } },
+            onClick: () => {}, // o filtro acima já faz esse papel
+          },
+          barTotals: { color: cssVar('--text-secondary') },
+          tooltip: {
+            backgroundColor: cssVar('--surface'),
+            titleColor: cssVar('--text-primary'),
+            bodyColor: cssVar('--text-secondary'),
+            borderColor: cssVar('--border'),
+            borderWidth: 1,
+            padding: 10,
+            displayColors: false,
+            // Uma linha por série (só as com valor) e o resumo no rodapé
+            filter: (item) => item.raw > 0,
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.raw)}`,
+              footer: (items) => {
+                const g = groups[items.length ? items[0].dataIndex : 0];
+                const qtd = fuels.reduce((a, f) => a + g.n[f], 0);
+                if (!qtd) return fuelMode === 'both' ? 'sem abastecimentos' : `sem abastecimentos com ${FUEL_LABEL[fuelMode].toLowerCase()}`;
+                const total = fuels.reduce((a, f) => a + g[f], 0);
+                const lines = fuels.length > 1 ? [`Total: ${fmt(total)}`] : [];
+                lines.push(`${qtd} abastecimento${qtd === 1 ? '' : 's'}`);
+                return lines;
+              },
+            },
+            footerColor: cssVar('--text-muted'),
+            footerFont: { weight: 'normal' },
+          },
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            border: { color: grid },
+            ticks: { color: muted, maxRotation: 0, autoSkip: true, autoSkipPadding: 12, font: { size: 11 } },
+          },
+          y: {
+            beginAtZero: true,
+            grace: '22%', // espaço acima das colunas para os totais
+            grid: { color: grid },
+            border: { display: false },
+            ticks: { color: muted, font: { size: 11 }, maxTicksLimit: 6, callback: (v) => fmt(v) },
+          },
+        },
+      },
+    });
+  }
+
+  function chartsVisible() { return $('wrap').classList.contains('show-charts'); }
+
+  function showCharts(show) {
+    $('wrap').classList.toggle('show-charts', show);
+    $('btnCharts').hidden = show;
+    window.scrollTo(0, 0);
+    if (show) renderCharts();
+  }
+  $('btnCharts').addEventListener('click', () => showCharts(true));
+  $('btnBack').addEventListener('click', () => showCharts(false));
+
+  function renderCharts() {
+    // Só desenha com a tela de gráficos aberta (o Chart.js precisa do canvas visível para medir)
+    if (!chartsVisible()) return;
+    const has = entries.length > 0;
+    $('charts').hidden = !has;
+    $('chartsEmpty').hidden = has;
+    if (!has) return;
+    if (typeof Chart === 'undefined') {
+      $('chartsEmpty').hidden = false;
+      $('chartsEmpty').textContent = 'Não foi possível carregar a biblioteca de gráficos (verifique a conexão com a internet).';
+      $('charts').hidden = true;
+      return;
+    }
+    $('chGastoDesc').textContent = chartFuel === 'both'
+      ? 'Total pago por período, separado entre gasolina e álcool.'
+      : `Total pago com ${FUEL_LABEL[chartFuel].toLowerCase()} por período.`;
+    makeChart('chGasto', groupBy(entries, groupMode), chartFuel);
+  }
+
+  document.querySelectorAll('[data-group]').forEach(btn => {
+    btn.setAttribute('aria-pressed', String(btn.dataset.group === groupMode));
+    btn.addEventListener('click', () => {
+      groupMode = btn.dataset.group;
+      storageSet('agrupamento', groupMode);
+      document.querySelectorAll('[data-group]').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+      renderCharts();
+    });
+  });
+
+  document.querySelectorAll('[data-fuel]').forEach(btn => {
+    btn.setAttribute('aria-pressed', String(btn.dataset.fuel === chartFuel));
+    btn.addEventListener('click', () => {
+      chartFuel = btn.dataset.fuel;
+      storageSet('grafico_combustivel', chartFuel);
+      document.querySelectorAll('[data-fuel]').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+      renderCharts();
+    });
+  });
+
+  // ---------- Tema ----------
+  // Sem escolha salva, segue o tema do sistema; ao usar o switch, a escolha fica salva.
+  const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+  function isDark() {
+    const t = document.documentElement.dataset.theme;
+    return t ? t === 'dark' : darkQuery.matches;
+  }
+  function renderThemeSwitch() {
+    const dark = isDark();
+    $('themeSwitch').setAttribute('aria-checked', String(dark));
+    $('themeIcon').textContent = dark ? '🌙' : '☀️';
+  }
+  $('themeSwitch').addEventListener('click', () => {
+    const theme = isDark() ? 'light' : 'dark';
+    document.documentElement.dataset.theme = theme;
+    storageSet('tema', theme);
+    renderThemeSwitch();
+    renderCharts(); // as cores do gráfico são lidas na hora de desenhar
+  });
+  renderThemeSwitch();
+
+  // Redesenha quando o tema do sistema muda (só faz diferença se não houver escolha salva)
+  try {
+    darkQuery.addEventListener('change', () => { renderThemeSwitch(); renderCharts(); });
+  } catch {}
+
+  // ---------- Tabela ----------
+  // Mês exibido no histórico: 'AAAA-MM' ou 'all'. Começa no mês atual.
+  let histMonth = toISO(new Date()).slice(0, 7);
+  let histFuel = 'all'; // 'all', 'gasolina' ou 'alcool'
+
+  function monthLabel(ym) {
+    const [y, m] = ym.split('-').map(Number);
+    return `${MESES[m - 1]}/${y}`;
+  }
+  // Meses com registros, do mais recente ao mais antigo
+  function availableMonths() {
+    return [...new Set(entries.map(e => e.data.slice(0, 7)))].sort().reverse();
+  }
+
+  function renderTable() {
+    const months = availableMonths();
+    if (histMonth !== 'all' && !months.includes(histMonth)) {
+      histMonth = months[0] || 'all';
+    }
+
+    const sel = $('monthFilter');
+    sel.innerHTML = months.map(ym => `<option value="${ym}">${monthLabel(ym)}</option>`).join('')
+      + `<option value="all">Todos os meses</option>`;
+    sel.value = histMonth;
+
+    const idx = months.indexOf(histMonth);
+    $('btnMonthPrev').disabled = idx < 0 || idx >= months.length - 1;
+    $('btnMonthNext').disabled = idx <= 0;
+
+    const sorted = entries
+      .filter(e => histMonth === 'all' || e.data.startsWith(histMonth))
+      .filter(e => histFuel === 'all' || fuelOf(e) === histFuel)
+      .sort((a, b) => b.data.localeCompare(a.data) || b.id.localeCompare(a.id));
+
+    const tot = sorted.reduce((a, e) => ({ v: a.v + e.valor, l: a.l + e.litros, k: a.k + e.km }), { v: 0, l: 0, k: 0 });
+    $('histSummary').textContent = sorted.length
+      ? `${sorted.length} abastecimento${sorted.length === 1 ? '' : 's'} · ${brl.format(tot.v)} · média ${n1.format(tot.k / tot.l)} km/L · ${brl.format(tot.v / tot.k)} por km`
+      : '';
+
+    $('tableEmpty').hidden = sorted.length > 0;
+    $('histTable').hidden = !sorted.length; // sem registros, não mostra só o cabeçalho
+    $('tableEmpty').innerHTML = entries.length
+      ? `Nenhum abastecimento ${histFuel === 'alcool' ? 'com álcool' : histFuel === 'gasolina' ? 'com gasolina' : ''} neste período.`
+      : 'Nenhum abastecimento registrado ainda.<br><button type="button" class="small" id="btnLoadExample" style="margin-top:12px">Carregar dados de exemplo</button>';
+    $('tbody').innerHTML = sorted.map(e => `
+      <tr>
+        <td class="head-date">${fmtDate(e.data)}</td>
+        <td class="head-fuel"><span class="fuel ${fuelOf(e)}">${FUEL_LABEL[fuelOf(e)]}</span></td>
+        <td data-label="Valor">${brl.format(e.valor)}</td>
+        <td data-label="Litros">${n2.format(e.litros)} L</td>
+        <td data-label="Km">${n0.format(e.km)}</td>
+        <td data-label="R$/L">${brl.format(e.valor / e.litros)}</td>
+        <td data-label="km/L">${n2.format(e.km / e.litros)}</td>
+        <td data-label="R$/km">${brl.format(e.valor / e.km)}</td>
+        <td class="actions">
+          <button type="button" class="small" data-edit="${e.id}">Editar</button>
+          <button type="button" class="small danger" data-del="${e.id}">Excluir</button>
+        </td>
+      </tr>`).join('');
+  }
+
+  $('tableEmpty').addEventListener('click', (ev) => {
+    if (!ev.target.closest('#btnLoadExample')) return;
+    entries = exemplo();
+    histMonth = 'all';
+    persist(() => cloudUpsert(entries));
+    render();
+  });
+
+  $('fuelFilter').addEventListener('change', (ev) => {
+    histFuel = ev.target.value;
+    renderTable();
+  });
+  $('monthFilter').addEventListener('change', (ev) => {
+    histMonth = ev.target.value;
+    renderTable();
+  });
+  // ‹ vai para o mês mais antigo, › para o mais recente
+  function stepMonth(delta) {
+    const months = availableMonths();
+    const idx = months.indexOf(histMonth);
+    if (idx < 0 || !months[idx + delta]) return;
+    histMonth = months[idx + delta];
+    renderTable();
+  }
+  $('btnMonthPrev').addEventListener('click', () => stepMonth(1));
+  $('btnMonthNext').addEventListener('click', () => stepMonth(-1));
+
+  $('tbody').addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button');
+    if (!btn) return;
+    if (btn.dataset.edit) startEdit(btn.dataset.edit);
+    if (btn.dataset.del) {
+      const e = entries.find(x => x.id === btn.dataset.del);
+      if (e && confirm(`Excluir o abastecimento de ${fmtDate(e.data)} (${brl.format(e.valor)})?`)) remove(e.id);
+    }
+  });
+
+  // ---------- Backup ----------
+  function exportJSON() {
+    const payload = { app: 'controle-abastecimento', versao: 1, exportado_em: new Date().toISOString(), entries };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `abastecimentos-${toISO(new Date())}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    storageSet(BACKUP_KEY, new Date().toISOString());
+    renderBackupWarn();
+  }
+
+  function renderBackupWarn() {
+    const warn = $('backupWarn');
+    // Na nuvem os dados não somem com o navegador: o aviso só vale no modo local
+    if (!entries.length || db) { warn.classList.remove('show'); return; }
+    const last = storageGet(BACKUP_KEY);
+    const changed = storageGet(CHANGED_KEY);
+    let msg = '';
+    if (!last) {
+      msg = 'Você ainda não fez nenhum backup. Se os dados do navegador forem limpos, tudo será perdido.';
+    } else {
+      const days = Math.floor((Date.now() - new Date(last)) / 86400000);
+      const hasNew = changed && new Date(changed) > new Date(last);
+      if (hasNew && days >= BACKUP_DAYS) {
+        msg = `Seu último backup foi há ${days} dias e há registros novos desde então.`;
+      }
+    }
+    $('backupWarnText').textContent = msg;
+    warn.classList.toggle('show', !!msg);
+  }
+
+  $('btnExport').addEventListener('click', exportJSON);
+  $('btnBackupNow').addEventListener('click', exportJSON);
+
+  const fileImport = $('fileImport');
+  const dlg = $('importDialog');
+  let pendingImport = null;
+
+  $('btnImport').addEventListener('click', () => fileImport.click());
+  fileImport.addEventListener('change', async () => {
+    const file = fileImport.files[0];
+    fileImport.value = '';
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      const list = Array.isArray(parsed) ? parsed : parsed && parsed.entries;
+      if (!Array.isArray(list)) throw new Error('formato');
+      const valid = list.filter(isValidEntry);
+      if (!valid.length) throw new Error('vazio');
+      pendingImport = valid;
+      const ignored = list.length - valid.length;
+      $('importInfo').textContent =
+        `O arquivo tem ${valid.length} abastecimento${valid.length === 1 ? '' : 's'} válido${valid.length === 1 ? '' : 's'}` +
+        (ignored ? ` (${ignored} ignorado${ignored === 1 ? '' : 's'} por estar${ignored === 1 ? '' : 'em'} inválido${ignored === 1 ? '' : 's'})` : '') +
+        `. Você tem ${entries.length} registrado${entries.length === 1 ? '' : 's'} agora.`;
+      dlg.showModal();
+    } catch {
+      alert('Arquivo inválido. Escolha um backup exportado por este sistema.');
+    }
+  });
+
+  dlg.addEventListener('click', (ev) => {
+    const act = ev.target.dataset && ev.target.dataset.act;
+    if (!act) return;
+    if (act === 'replace' && pendingImport) {
+      entries = pendingImport;
+      const list = entries;
+      persist(async () => { await cloudDeleteAll(); await cloudUpsert(list); });
+    } else if (act === 'merge' && pendingImport) {
+      const ids = new Set(entries.map(e => e.id));
+      const added = pendingImport.filter(e => !ids.has(e.id));
+      entries = entries.concat(added);
+      persist(() => cloudUpsert(added));
+    }
+    if (act !== 'cancel' && pendingImport) {
+      // Substituindo, os dados são exatamente os do backup: nada novo para salvar
+      if (act === 'replace') storageSet(BACKUP_KEY, new Date().toISOString());
+      resetForm();
+      render();
+    }
+    pendingImport = null;
+    dlg.close();
+  });
+
+  $('btnClearAll').addEventListener('click', () => {
+    if (!entries.length) return alert('Não há dados para limpar.');
+    const n = entries.length;
+    const msg = `Isso vai apagar todos os ${n} abastecimento${n === 1 ? '' : 's'} registrado${n === 1 ? '' : 's'} ${db ? 'na sua conta (em todos os aparelhos)' : 'neste navegador'}. `
+      + 'Não dá para desfazer: se quiser guardar uma cópia, cancele e use "Exportar backup" antes.\n\nApagar tudo?';
+    if (!confirm(msg)) return;
+    entries = [];
+    persist(cloudDeleteAll);
+    histMonth = toISO(new Date()).slice(0, 7);
+    resetForm();
+    render();
+  });
+
+  // ---------- Comparador gasolina × álcool ----------
+  const CMP_FIELDS = ['cmpPrecoGas', 'cmpPrecoAlc', 'cmpKmlGas', 'cmpExtra', 'cmpKm'];
+  const CMP_DEFAULTS = { cmpKmlGas: '14', cmpExtra: '30', cmpKm: '420' };
+
+  // Preço do litro do último abastecimento registrado com esse combustível
+  function lastPrice(fuel) {
+    const last = entries.filter(e => fuelOf(e) === fuel).sort((a, b) => b.data.localeCompare(a.data))[0];
+    return last ? fmtFixed(last.valor / last.litros, 2, 3) : '';
+  }
+
+  // Preenche os campos vazios: o que a pessoa digitou antes, senão o último preço registrado, senão o padrão
+  function fillCmpDefaults() {
+    let saved = {};
+    try { saved = JSON.parse(storageGet('comparador') || '{}'); } catch {}
+    const fallback = { ...CMP_DEFAULTS, cmpPrecoGas: lastPrice('gasolina'), cmpPrecoAlc: lastPrice('alcool') };
+    for (const id of CMP_FIELDS) {
+      if (!$(id).value) $(id).value = saved[id] || fallback[id] || '';
+    }
+  }
+
+  function renderComparator() {
+    const pg = parseNum($('cmpPrecoGas').value), pa = parseNum($('cmpPrecoAlc').value);
+    const kmlG = parseNum($('cmpKmlGas').value), extra = parseNum($('cmpExtra').value), km = parseNum($('cmpKm').value);
+    const out = $('cmpResult');
+
+    if (!(pg > 0 && pa > 0 && kmlG > 0 && extra >= 0 && km > 0)) {
+      out.innerHTML = '<p class="muted">Preencha os preços da gasolina e do álcool para ver a comparação.</p>';
+      return;
+    }
+
+    const fator = 1 + extra / 100;           // álcool gasta X% a mais de litros
+    const kmlA = kmlG / fator;
+    const litrosG = km / kmlG, litrosA = km / kmlA;
+    const custoG = litrosG * pg, custoA = litrosA * pa;
+    const limite = 1 / fator;                // razão preço álcool / gasolina em que empata
+    const razao = pa / pg;
+    const precoEmpate = pg * limite;
+    const alcoolGanha = custoA < custoG;
+    const diff = Math.abs(custoG - custoA);
+    const pct = diff / Math.max(custoG, custoA) * 100;
+
+    let veredito, motivo;
+    if (Math.abs(custoA - custoG) < 0.005) {
+      veredito = 'Empate: tanto faz';
+      motivo = `O álcool está exatamente no limite de ${n0.format(limite * 100)}% do preço da gasolina.`;
+    } else if (alcoolGanha) {
+      veredito = `⛽ Abasteça com <span style="color:var(--good)">álcool</span>: economia de ${brl.format(diff)} (${n1.format(pct)}%)`;
+      motivo = `O álcool custa ${n0.format(razao * 100)}% do preço da gasolina, abaixo do seu limite de ${n0.format(limite * 100)}%.`;
+    } else {
+      veredito = `⛽ Abasteça com <span style="color:var(--good)">gasolina</span>: economia de ${brl.format(diff)} (${n1.format(pct)}%)`;
+      motivo = `O álcool custa ${n0.format(razao * 100)}% do preço da gasolina, acima do seu limite de ${n0.format(limite * 100)}%.`;
+    }
+
+    const max = Math.max(custoG, custoA);
+    const row = (nome, cor, custo, litros, kml) => `
+      <div class="cmp-row">
+        <div class="top"><span>${nome}</span><span class="val">${brl.format(custo)}</span></div>
+        <div class="track"><div class="bar" style="width:${(custo / max * 100).toFixed(1)}%; background:var(${cor})"></div></div>
+        <div class="sub">${n1.format(litros)} L · ${n1.format(kml)} km/L · ${brl.format(custo / km)} por km</div>
+      </div>`;
+
+    out.innerHTML = `
+      <div class="verdict">
+        <div class="big">${veredito}</div>
+        <div class="why">${motivo} Com esses preços, para rodar ${n0.format(km)} km.</div>
+        <div class="why">O álcool compensa enquanto custar até <strong>${brl.format(precoEmpate)}</strong> o litro (com a gasolina a ${brl.format(pg)}).</div>
+      </div>
+      <h3 style="margin:0 0 10px; font-size:0.95rem">Custo para rodar ${n0.format(km)} km</h3>
+      <div class="cmp-bars">
+        ${row('Gasolina', '--series-1', custoG, litrosG, kmlG)}
+        ${row('Álcool', '--series-2', custoA, litrosA, kmlA)}
+      </div>
+      <div class="table-wrap">
+        <table class="cmp-table">
+          <thead><tr><th>Distância</th><th>Gasolina</th><th>Álcool</th><th>Diferença</th></tr></thead>
+          <tbody>
+            ${[100, km, 1000, 5000].filter((d, i, a) => a.indexOf(d) === i).sort((a, b) => a - b).map(d => {
+              const g = d / kmlG * pg, a = d / kmlA * pa;
+              return `<tr><td>${n0.format(d)} km</td><td>${brl.format(g)}</td><td>${brl.format(a)}</td><td>${brl.format(Math.abs(g - a))} <span class="favor">${a < g ? 'a favor do álcool' : a > g ? 'a favor da gasolina' : ''}</span></td></tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  CMP_FIELDS.forEach(id => $(id).addEventListener('input', () => {
+    const saved = {};
+    CMP_FIELDS.forEach(f => { saved[f] = $(f).value; });
+    storageSet('comparador', JSON.stringify(saved));
+    renderComparator();
+  }));
+
+  // ---------- Render ----------
+  function render() {
+    renderKPIs();
+    fillCmpDefaults();
+    renderComparator();
+    renderCharts();
+    renderTable();
+    renderBackupWarn();
+  }
+
+  // ---------- Login e inicialização ----------
+  function renderStorageNote() {
+    $('storageNote').textContent = !db ? 'Seus dados ficam salvos neste navegador.'
+      : pending ? 'Salvando…'
+      : `Sincronizado com ${user ? user.email : 'sua conta'}.`;
+    $('btnLogout').hidden = !db;
+  }
+
+  // step: 'email' (pede o e-mail), 'code' (pede o código recebido) ou nada (só a mensagem)
+  function showAuth(msg, step) {
+    document.documentElement.classList.remove('logged');
+    $('authMsg').textContent = msg;
+    $('loginForm').hidden = step !== 'email';
+    $('codeForm').hidden = step !== 'code';
+    $('authError').textContent = '';
+    if (step === 'email') $('loginEmail').focus();
+    if (step === 'code') { $('loginCode').value = ''; $('loginCode').focus(); }
+  }
+  const LOGIN_MSG = 'Entre com seu e-mail para ver e registrar seus abastecimentos. Os dados ficam sincronizados entre o celular e o computador.';
+
+  // Primeiro login neste aparelho: oferece enviar o que já estava salvo só no navegador
+  async function offerLocalUpload() {
+    if (storageGet('nuvem_importado') === user.id) return;
+    const ids = new Set(entries.map(e => e.id));
+    const novos = load().filter(e => !e.id.startsWith('exemplo-') && !ids.has(e.id));
+    storageSet('nuvem_importado', user.id);
+    if (!novos.length) return;
+    const n = novos.length;
+    if (!confirm(`Este navegador tem ${n} abastecimento${n === 1 ? '' : 's'} salvo${n === 1 ? '' : 's'} antes do login. Enviar para a sua conta?`)) return;
+    entries = entries.concat(novos);
+    persist(() => cloudUpsert(novos));
+  }
+
+  async function onSession(session) {
+    const u = session ? session.user : null;
+    if (authChecked && (u && u.id) === (user && user.id)) return; // mesma pessoa (ex.: token renovado)
+    authChecked = true;
+    user = u;
+    if (!user) {
+      entries = [];
+      showAuth(LOGIN_MSG, 'email');
+      return;
+    }
+    showAuth('Carregando seus dados…');
+    try {
+      entries = await cloudFetch();
+    } catch (err) {
+      showAuth(`Não foi possível carregar seus dados (${err.message || err}). Tente entrar de novo.`, 'email');
+      user = null;
+      return;
+    }
+    document.documentElement.classList.add('logged');
+    renderStorageNote();
+    histMonth = toISO(new Date()).slice(0, 7);
+    resetForm();
+    await offerLocalUpload();
+    render();
+  }
+
+  if (db) {
+    // Login sem senha: o Supabase manda um e-mail com um código (e um link que também funciona)
+    let loginEmail = '';
+    $('loginForm').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const email = $('loginEmail').value.trim();
+      if (!/^\S+@\S+\.\S+$/.test(email)) { $('authError').textContent = 'Digite um e-mail válido.'; return; }
+      $('btnSendCode').disabled = true;
+      const { error } = await db.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: location.origin + location.pathname },
+      });
+      $('btnSendCode').disabled = false;
+      if (error) { $('authError').textContent = `Não foi possível enviar o código: ${error.message}`; return; }
+      loginEmail = email;
+      showAuth(`Enviamos um código para ${email}. Digite-o abaixo (ou toque no link do e-mail).`, 'code');
+    });
+    $('codeForm').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const token = $('loginCode').value.replace(/\s/g, '');
+      if (!token) return;
+      $('btnVerify').disabled = true;
+      const { error } = await db.auth.verifyOtp({ email: loginEmail, token, type: 'email' });
+      $('btnVerify').disabled = false;
+      if (error) $('authError').textContent = 'Código inválido ou expirado. Confira o último e-mail recebido.';
+      // com sucesso, o onAuthStateChange abaixo abre o app
+    });
+    $('btnOtherEmail').addEventListener('click', () => showAuth(LOGIN_MSG, 'email'));
+    $('btnLogout').addEventListener('click', () => db.auth.signOut());
+    // Dispara no carregamento (sessão salva ou volta pelo link do e-mail), no login e no logout
+    db.auth.onAuthStateChange((_event, session) => { setTimeout(() => onSession(session), 0); });
+    // Ao voltar para a aba, busca o que foi alterado no outro aparelho
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && user && !pending) reloadCloud();
+    });
+  } else if (cloudWanted) {
+    showAuth('Não foi possível carregar o Supabase. Verifique a conexão com a internet e recarregue a página.');
+  } else {
+    // Modo local. Nada salvo ainda (primeiro acesso): começa com o exemplo. Depois de "Limpar todos os dados" fica vazio.
+    const firstVisit = storageGet(STORE_KEY) === null;
+    entries = firstVisit ? exemplo() : load();
+    if (firstVisit) storageSet(STORE_KEY, JSON.stringify(entries));
+  }
+
+  renderStorageNote();
+  resetForm();
+  render();
+})();
+</script>
+</body>
+</html>

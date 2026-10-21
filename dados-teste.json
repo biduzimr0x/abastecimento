@@ -1,0 +1,87 @@
+{
+  "app": "controle-abastecimento",
+  "versao": 1,
+  "exportado_em": "2026-10-20T23:28:03.651Z",
+  "entries": [
+    {
+      "id": "exemplo-1",
+      "data": "2026-08-04",
+      "combustivel": "gasolina",
+      "valor": 194.88,
+      "litros": 32,
+      "km": 451
+    },
+    {
+      "id": "exemplo-2",
+      "data": "2026-08-15",
+      "combustivel": "alcool",
+      "valor": 173.75,
+      "litros": 40.5,
+      "km": 441
+    },
+    {
+      "id": "exemplo-3",
+      "data": "2026-08-27",
+      "combustivel": "gasolina",
+      "valor": 174.66,
+      "litros": 28.4,
+      "km": 386
+    },
+    {
+      "id": "exemplo-4",
+      "data": "2026-09-06",
+      "combustivel": "alcool",
+      "valor": 167.7,
+      "litros": 38.2,
+      "km": 405
+    },
+    {
+      "id": "exemplo-5",
+      "data": "2026-09-14",
+      "combustivel": "alcool",
+      "valor": 178.35,
+      "litros": 41,
+      "km": 455
+    },
+    {
+      "id": "exemplo-6",
+      "data": "2026-09-23",
+      "combustivel": "gasolina",
+      "valor": 185.7,
+      "litros": 30,
+      "km": 420
+    },
+    {
+      "id": "exemplo-7",
+      "data": "2026-10-01",
+      "combustivel": "gasolina",
+      "valor": 222.14,
+      "litros": 35.6,
+      "km": 491
+    },
+    {
+      "id": "exemplo-8",
+      "data": "2026-10-07",
+      "combustivel": "alcool",
+      "valor": 172.44,
+      "litros": 36,
+      "km": 374
+    },
+    {
+      "id": "exemplo-9",
+      "data": "2026-10-12",
+      "combustivel": "gasolina",
+      "valor": 182.25,
+      "litros": 29.3,
+      "km": 419
+    },
+    {
+      "id": "exemplo-10",
+      "data": "2026-10-18",
+      "combustivel": "alcool",
+      "valor": 188.58,
+      "litros": 42,
+      "km": 454
+    }
+  ]
+}
